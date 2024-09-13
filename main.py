@@ -68,6 +68,36 @@ NUT_STYLES = [
 # %%
 
 
+def num_responses_fig(quant_data, nut_type):
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    counts = (
+        quant_data.reindex(nuts_by_type[nut_type], level=NUM_CODE)
+        .groupby(NUM_CODE)
+        .count()
+        .sort_index(ascending=False)
+        .rename(lambda num_code: f"{num_to_name[num_code]} ({num_code})")
+        .rename_axis("Namn")
+    )
+    counts.plot.barh(ax=ax)
+
+    ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
+    ax.set_xlabel("Antal svar")
+
+    fig.suptitle("Antal svar\n" + nut_type)
+
+    return fig
+
+
+figdir = pathlib.Path("figs")
+figdir.mkdir(exist_ok=True)
+
+for nt in nut_types:
+    fig = num_responses_fig(quant_data, nt)
+    fig.savefig(figdir / f"counts-{nt}.png", dpi=300)
+# %%
+
+
 def score_prediction_fig(quant_data, nut_type):
     quant_data = quant_data.reindex(nuts_by_type[nut_type], level=NUM_CODE)
     nut_means = quant_data.groupby(NUM_CODE).mean()
@@ -86,14 +116,14 @@ def score_prediction_fig(quant_data, nut_type):
             }
         )
 
-        for nut, style in zip(ax_data.index.unique(NUM_CODE), NUT_STYLES):
+        for num_code, style in zip(ax_data.index.unique(NUM_CODE), NUT_STYLES):
             ax.errorbar(
-                **ax_data.xs(nut),
+                **ax_data.xs(num_code),
                 lw=0,
                 elinewidth=1,
                 capsize=5,
                 **style,
-                label=num_to_name[nut],
+                label=f"{num_to_name[num_code]} ({num_code})",
             )
 
         ax.set_xlabel(prop_var)
@@ -122,13 +152,12 @@ def score_prediction_fig(quant_data, nut_type):
     return fig
 
 
-
 figdir = pathlib.Path("figs")
 figdir.mkdir(exist_ok=True)
 
 for nt in nut_types:
     fig = score_prediction_fig(quant_data, nt)
-    fig.savefig(figdir / f"{nt}.png", dpi=300)
+    fig.savefig(figdir / f"predictors-{nt}.png", dpi=300)
 
 # %%
 
@@ -141,5 +170,3 @@ fig = score_prediction_fig(quant_data, "Jordnöt")
 # %%
 
 fig = score_prediction_fig(quant_data, "Pistagenöt")
-
-# %%
