@@ -1,24 +1,20 @@
 # %%
 
 import pandas as pd
-import seaborn as sns
 import scipy.stats
 import matplotlib.cm
 import matplotlib.pyplot as plt
+import pathlib
 
 # %%
 
-all_data = (
-    pd.read_csv("peanuts-2016-data.csv")
-    .set_index(["TBF", "Nöt", "Timestamp"])
-    .sort_index()
-    .groupby(["TBF", "Nöt"])
-    .last()
-)
-all_data
+DATA_PATH = pathlib.Path(__file__).parent / "data.xlsx"
 
-# %%
-
+NAME = "Namn"
+LETTER_CODE = "Bokstavskod"
+NUM_CODE = "Sifferkod"
+TESTER = "Testare"
+NUT_TYPE = "Nöttyp"
 PROP_VARS = [
     "Flottig",
     "Knaprig",
@@ -27,88 +23,123 @@ PROP_VARS = [
 ]
 SCORE_VAR = "Betyg"
 
-d = all_data.reindex(all_data.index.unique("TBF")[:10], level="TBF").reindex(
-    all_data.index.unique("Nöt")[:5], level="Nöt"
-)[[SCORE_VAR, *PROP_VARS]]
+translation_data = pd.read_excel(DATA_PATH, sheet_name="Sifferkoder").set_index(
+    LETTER_CODE
+)[NUM_CODE]
+nut_data = (
+    pd.read_excel(DATA_PATH, sheet_name="Nötter")
+    .join(translation_data, on=LETTER_CODE)
+    .set_index(NUM_CODE)
+    .sort_index()
+)
+evaluation_data = pd.read_excel(DATA_PATH, sheet_name="Utvärdering").set_index(
+    [TESTER, NUM_CODE]
+)
 
-d
+num_to_name = nut_data[NAME]
+
+num_to_name
 
 # %%
 
-nut_means = d.groupby("Nöt").mean()
-nut_means
+nut_types = list(nut_data[NUT_TYPE].unique())
+nut_types
 
 # %%
 
-nut_stderrs = d.groupby("Nöt").std() / d.groupby("Nöt").count() ** 0.5
-nut_stderrs
+nuts_by_type = {
+    nut_type: list(nut_data.loc[lambda d: d[NUT_TYPE] == nut_type].index)
+    for nut_type in nut_types
+}
+nuts_by_type
 
 # %%
 
-nut_styles = [
+quant_data = evaluation_data[[*PROP_VARS, SCORE_VAR]]
+quant_data
+
+# %%
+
+NUT_STYLES = [
     dict(marker=marker, color=color)
-    for marker, color in zip("vsdpo>", matplotlib.cm.get_cmap("tab10").colors)
+    for marker, color in zip("vsdpo>", matplotlib.colormaps["tab10"].colors)
 ]
 
-fig, axs = plt.subplots(ncols=len(PROP_VARS), sharey=True, figsize=(8, 3))
+# %%
 
-for ax, prop_var in zip(axs, PROP_VARS):
-    ax_data = pd.DataFrame(
-        {
-            "x": nut_means[prop_var],
-            "y": nut_means[SCORE_VAR],
-            "yerr": nut_stderrs[prop_var] * 1.96,
-        }
+
+def score_prediction_fig(quant_data, nut_type):
+    quant_data = quant_data.reindex(nuts_by_type[nut_type], level=NUM_CODE)
+    nut_means = quant_data.groupby(NUM_CODE).mean()
+    nut_stderrs = (
+        quant_data.groupby(NUM_CODE).std() / quant_data.groupby(NUM_CODE).count() ** 0.5
     )
 
-    for nut, style in zip(ax_data.index.unique("Nöt"), nut_styles):
-        ax.errorbar(
-            **ax_data.xs(nut),
-            lw=0,
-            elinewidth=1,
-            capsize=5,
-            **style,
-            label=nut,
+    fig, axs = plt.subplots(ncols=len(PROP_VARS), sharey=True, figsize=(9, 4))
+
+    for ax, prop_var in zip(axs, PROP_VARS):
+        ax_data = pd.DataFrame(
+            {
+                "x": nut_means[prop_var],
+                "y": nut_means[SCORE_VAR],
+                "yerr": nut_stderrs[prop_var] * 1.96,
+            }
         )
 
-    ax.set_xlabel(prop_var)
+        for nut, style in zip(ax_data.index.unique(NUM_CODE), NUT_STYLES):
+            ax.errorbar(
+                **ax_data.xs(nut),
+                lw=0,
+                elinewidth=1,
+                capsize=5,
+                **style,
+                label=num_to_name[nut],
+            )
 
-    regression = scipy.stats.linregress(ax_data["x"], ax_data["y"])
-    x_pred = ax_data["x"].sort_values()
-    y_pred = regression.intercept + x_pred * regression.slope
-    ax.plot(x_pred, y_pred, lw=1, ls="--", color="k")
+        ax.set_xlabel(prop_var)
 
-    ax.text(
-        0.05,
-        0.98,
-        f"p = {regression.pvalue:.2f}",
-        transform=ax.transAxes,
-        verticalalignment="top",
-    )
+        regression = scipy.stats.linregress(ax_data["x"], ax_data["y"])
+        x_pred = ax_data["x"].sort_values()
+        y_pred = regression.intercept + x_pred * regression.slope
+        ax.plot(x_pred, y_pred, lw=1, ls="--", color="k")
 
-axs[0].set_ylabel(SCORE_VAR)
+        ax.text(
+            0.05,
+            0.98,
+            f"p = {regression.pvalue:.2f}",
+            transform=ax.transAxes,
+            verticalalignment="top",
+        )
 
-axs[0].legend(loc="lower left", bbox_to_anchor=(0, 1.05))
+    axs[0].set_ylabel(SCORE_VAR)
+
+    axs[0].legend(loc="upper left", bbox_to_anchor=(0, -0.2), ncols=3)
+
+    fig.tight_layout()
+
+    fig.suptitle(nut_type)
+
+    return fig
+
+
+
+figdir = pathlib.Path("figs")
+figdir.mkdir(exist_ok=True)
+
+for nt in nut_types:
+    fig = score_prediction_fig(quant_data, nt)
+    fig.savefig(figdir / f"{nt}.png", dpi=300)
 
 # %%
 
-raw_data = pd.DataFrame(
-    [
-        ["AAA", "J1", 5, 3, 4],
-        ["AAA", "J2", 3, 2, 7],
-        ["BBB", "J1", 6, 4, 5],
-    ]
-).set_axis(["TBF", "Nöt", "Prop1", "Prop2", "Score"], axis=1)
+fig = score_prediction_fig(quant_data, "Cashewnöt")
 
-ALPHA_TO_NUM = {
-    "JA": "J2",
-    "JB": "J1",
-}
-NAME_TO_ALPHA = {
-    "Jord1": "JA",
-    "Jord2": "JB",
-}
+# %%
 
-NUM_TO_NAME = {ALPHA_TO_NUM[alpha]: name for name, alpha in NAME_TO_ALPHA.items()}
+fig = score_prediction_fig(quant_data, "Jordnöt")
 
-raw_data.replace(NUM_TO_NAME)
+# %%
+
+fig = score_prediction_fig(quant_data, "Pistagenöt")
+
+# %%
