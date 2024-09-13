@@ -158,15 +158,3 @@ figdir.mkdir(exist_ok=True)
 for nt in nut_types:
     fig = score_prediction_fig(quant_data, nt)
     fig.savefig(figdir / f"predictors-{nt}.png", dpi=300)
-
-# %%
-
-fig = score_prediction_fig(quant_data, "Cashewnöt")
-
-# %%
-
-fig = score_prediction_fig(quant_data, "Jordnöt")
-
-# %%
-
-fig = score_prediction_fig(quant_data, "Pistagenöt")
