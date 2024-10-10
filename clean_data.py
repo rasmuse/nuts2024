@@ -1,9 +1,6 @@
 # %%
 
 import pandas as pd
-import scipy.stats
-import matplotlib.cm
-import matplotlib.pyplot as plt
 import pathlib
 
 # %%
